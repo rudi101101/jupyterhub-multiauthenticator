@@ -49,7 +49,7 @@ from traitlets import List
 from traitlets import Unicode
 from traitlets import import_item
 
-PREFIX_SEPARATOR = ":"
+PREFIX_SEPARATOR = "_"
 
 
 def _load_authenticator(authenticator_name):
@@ -167,8 +167,44 @@ class MultiAuthenticator(Authenticator):
             service_name = authenticator_configuration.pop("service_name", None)
 
             authenticator = WrapperAuthenticator(
-                parent=self, **authenticator_configuration
+                parent=self, 
+                add_new_table=False,
+                **authenticator_configuration
             )
+
+            # tambahkan ini
+            try:
+                from jupyterhub.orm import Base as JHBase
+                db_url = str(self.parent.db_url) if hasattr(self.parent, "db_url") else None
+                if db_url:
+                    if hasattr(authenticator, "init_db"):
+                        authenticator.init_db(db_url)
+                        self.log.info(f"[MultiAuthenticator] init_db attached for {authenticator.login_service}")
+                    else:
+                        self.log.debug(f"[MultiAuthenticator] Skipping init_db for {authenticator.login_service} (no init_db method)")
+                else:
+                    self.log.warning("[MultiAuthenticator] Skipping init_db: db_url not found")
+            except Exception as e:
+                self.log.error(f"[MultiAuthenticator] init_db failed for {getattr(authenticator, 'login_service', str(authenticator))}: {e}")
+
+            # # --- PATCH: inisialisasi database khusus untuk NativeAuthenticator ---
+            # if hasattr(authenticator, "init_db") and getattr(authenticator, "db", None) is None:
+            #     try:
+            #         db_url = getattr(self, "db_url", None)
+            #         if db_url is None:
+            #             # fallback ke sqlite bawaan jupyterhub
+            #             from jupyterhub.app import JupyterHub
+            #             hub = JupyterHub.instance()
+            #             if hub and hasattr(hub, "db_url"):
+            #                 db_url = hub.db_url
+            #             else:
+            #                 db_url = "sqlite:///jupyterhub.sqlite"
+
+            #         authenticator.init_db(db_url)
+            #         self.log.info(f"[MultiAuthenticator] init_db sukses untuk {authenticator.__class__.__name__} ({db_url})")
+            #     except Exception as e:
+            #         self.log.error(f"[MultiAuthenticator] Gagal init_db untuk {authenticator.__class__.__name__}: {e}")
+            # # -------------------------------------------------------------------
 
             if self.username_prefix is not None:
                 authenticator.prefix = self.username_prefix
